@@ -466,6 +466,42 @@ class X509Tests(unittest.TestCase):
         self.assertIsInstance(printable_name.chosen[2][0]['value'].chosen, core.PrintableString)
         self.assertEqual('common_name', printable_name.chosen[2][0]['type'].native)
 
+    def test_build_name_type_by_oid(self):
+        complex_name = x509.Name.build(
+            {
+                'country_name': 'US',
+                'tpm_manufacturer': 'Acme Co',
+                'unique_identifier': b'\x04\x10\x03\x09',
+                'email_address': 'will@codexns.io'
+            }
+        )
+        self.assertEqual("country_name", complex_name.chosen[0][0]['type'].native)
+        self.assertIsInstance(complex_name.chosen[0][0]['value'], x509.DirectoryString)
+        self.assertIsInstance(complex_name.chosen[0][0]['value'].chosen, core.PrintableString)
+        self.assertEqual("email_address", complex_name.chosen[1][0]['type'].native)
+        self.assertIsInstance(complex_name.chosen[1][0]['value'], x509.EmailAddress)
+        self.assertEqual("tpm_manufacturer", complex_name.chosen[2][0]['type'].native)
+        self.assertIsInstance(complex_name.chosen[2][0]['value'], core.UTF8String)
+        self.assertEqual("unique_identifier", complex_name.chosen[3][0]['type'].native)
+        self.assertIsInstance(complex_name.chosen[3][0]['value'], core.OctetBitString)
+
+    def test_name_hashable(self):
+        complex_name = x509.Name.build(
+            {
+                'country_name': 'US',
+                'tpm_manufacturer': 'Acme Co',
+                'unique_identifier': b'\x04\x10\x03\x09',
+                'email_address': 'will@codexns.io'
+            }
+        )
+        self.assertEqual(
+            "country_name:  us \x1e"
+            "email_address:  will@codexns.io \x1e"
+            "tpm_manufacturer:  acme  co \x1e"
+            "unique_identifier:  \x04\x10\x03\x09 ",
+            complex_name.hashable
+        )
+
     def test_v1_cert(self):
         cert = self._load_cert('chromium/ndn.ca.crt')
         tbs_cert = cert['tbs_certificate']
@@ -549,13 +585,60 @@ class X509Tests(unittest.TestCase):
                 'rsassa_pss',
                 'sha256'
             ),
+            (
+                'keys/test-ed448.crt',
+                'ed448',
+                ValueError
+            ),
         )
 
     @data('signature_algo_info')
     def signature_algo(self, relative_path, signature_algo, hash_algo):
         cert = self._load_cert(relative_path)
         self.assertEqual(signature_algo, cert['signature_algorithm'].signature_algo)
-        self.assertEqual(hash_algo, cert['signature_algorithm'].hash_algo)
+        if isinstance(hash_algo, type) and issubclass(hash_algo, Exception):
+            with self.assertRaises(hash_algo):
+                self.assertEqual(hash_algo, cert['signature_algorithm'].hash_algo)
+        else:
+            self.assertEqual(hash_algo, cert['signature_algorithm'].hash_algo)
+
+    @staticmethod
+    def cms_hash_algo_info():
+        return (
+            (
+                'keys/test-der.crt',
+                'sha256'
+            ),
+            (
+                'keys/test-inter-der.crt',
+                'sha256'
+            ),
+            (
+                'keys/test-dsa-der.crt',
+                'sha256'
+            ),
+            (
+                'keys/test-third-der.crt',
+                'sha256'
+            ),
+            (
+                'keys/test-ec-der.crt',
+                'sha256'
+            ),
+            (
+                'keys/test-rsapss.crt',
+                'sha256'
+            ),
+            (
+                'keys/test-ed448.crt',
+                'shake256'
+            ),
+        )
+
+    @data('cms_hash_algo_info')
+    def cms_hash_algo(self, relative_path, hash_algo):
+        cert = self._load_cert(relative_path)
+        self.assertEqual(hash_algo, cert['signature_algorithm'].cms_hash_algo)
 
     @staticmethod
     def critical_extensions_info():
